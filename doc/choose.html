@@ -1,0 +1,1110 @@
+<html><head>
+<meta http-equiv="content-type" content="text/html; charset=ISO-8859-1"></head><body>\ <!--
+: comment
+ create bl word dup c@ 1+ here swap dup allot cmove
+ does> count
+  begin  bl word count  2over compare while
+         >in @ source nip >=
+         dup if drop refill 0= dup abort" input stream exhausted" then
+  until then
+  2drop ;
+
+: <pre> ; : </pre> ;
+comment <p> </p>
+comment <h2> </h2>
+1 [IF]
+\ Here you may select if you want to run tests and/or examples
+-1 constant [examples]
+-1 constant [tests]
+: <b> ; : </b> ;
+[ELSE]
+\ The code (not tests/examples) is bold; just execute what is bold
+comment </b> <b>
+</b>
+[THEN]
+\ -->
+\ This html file contains Forth source and may be loaded as a Forth program
+<p> (c) Michael L Gassanenko, 2008. </p>
+\ <h1>The CHOOSE (switch) statement for Forth</h1><h3>Advanced Topics in Forth Programming</h3><h3>by Michael L Gassanenko</h3>
+<p>
+In this paper the following problem is solved: implement a switch 
+statement in Forth. The statement must use a jump address table. 
+Since all other control structures in  Forth are compiled in a 
+single pass, single-pass compilation is required. The case labels 
+may be either signed or unsigned single-cell values. As for case 
+labels, it is desirable to allow ranges as well as single values. 
+And it is desirable to allow multiple case labels for one branch. 
+It is desirable to keep the jump table size as small as possible.
+</p> <p>
+The main purpose of this paper is nevertheless not to implement 
+a control structure, but to demonstrate a number of Forth techniques. 
+Please consider it as a set of chapters for a Forth book.
+</p> <p>
+There is no requirement to use ANS Forth since portability of 
+control structure implementations has never been the goal of the 
+ANS Forth standard. ANS Forth defines a portable subset of Forth; 
+the techniques shown here are beyond this portable subset.
+</p>
+
+<h2> License </h2>
+<p>
+This writing includes an essay about advanced Forth programming,
+and an implementation of a control structure (with testing code).
+The code from this writing may be distributed on terms of GPL.
+</p>
+<b> <pre>\ The CHOOSE (switch) statement for Forth
+\ (c) Michael L Gassanenko
+
+\ This program may be distributed and/or modified under the terms 
+\ of the GNU General Public License
+\ as published by the Free Software Foundation; either version 2
+\ of the License, or (at your option) any later version.
+
+\ This program is distributed in the hope that it will be useful,
+\ but WITHOUT ANY WARRANTY; without even the implied warranty of
+\ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+\ GNU General Public License for more details.
+
+\ You should have received a copy of the GNU General Public License
+\ along with this program; if not, write to the Free Software
+\ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111, USA.
+
+\ Although this copy is released under GPL,
+\ vendors of commercial systems and authors of public domain systems
+\ who find GPL inappropriate are welcome to contact the author via 
+\ e-mail and arrange a different license 
+\ (mailbox: mlg7 domain_name: yandex.ru).
+
+\ The package includes two files:
+\ choose.htm -- implementation of CHOOSE, description of
+\               the techniques, testing code.
+\ choose.fth (optional) -- implementation of CHOOSE; if not present,
+\               choose.fth may be extracted from choose.htm
+\ (files from other contributors may be added later)
+
+</pre> </b>
+<p>
+See <a href="http://www.forth.org.ru/%7Emlg/SrcLib/choose/choose.fth">choose.fth</a>.
+</p>
+<h2> Terminology, notation, compiling this file...</h2>
+<p>
+The switch statement will use the following notation:
+</p><pre> choose
+   value1 when action1 end
+   value2 when action2 end
+   ....
+      other actionN end
+ end
+</pre>
+Because of the first word, it will also be called the CHOOSE statement.
+The notation for multiple case values and ranges will be:
+<pre> choose
+   value1 value2            when action1 end \ any number of values
+   value3 ... value4        when action2 end \ ellipsis denotes range
+   value5 value6 ... value7 when action3 end \ mixed values and ranges
+   \ and so on
+ end
+</pre>
+<p></p> <p>
+The values specified in the CHOOSE statement are called case labels,
+or case values. For each WHEN clause there is at least one case label.
+(The term is borrowed from languages where case values syntactically
+look like labels.)
+</p> <p>
+In stack diagrams, the stack label <i> i: </i> denotes the 
+interpretation stack (the return stack together with the 
+interpretation pointer, see the section "Theme 6" below).
+For example,
+</p><pre>EXIT ( i: addr -- )</pre>
+<p></p> <p>
+The notation <i> addr[ x ] </i> in stack diagrams means address <i> addr </i>
+at which <i> x </i> is stored. For example, the effect of @ may be described as:
+</p><pre>@ ( addr[ value ] -- value )</pre>
+The notation <i> addr+ </i> means address incremented by the size of the
+item of that address. For example,
+<pre>COUNT ( addr[ c ] -- addr+ c )</pre>
+<p></p> <p>
+<em><strong>This file is Forth source</strong></em> that happens 
+to be viewable by HTML browsers. It can be loaded as a normal Forth 
+source file. It uses HTML formatting because of the amount of text
+that explains the code. Testing code and examples are included;
+the code that actually implements the control structure (that is, 
+neither testing nor examples) is pre-formatted bold.
+Some code is located in html comments.
+<em>You need to edit the source of this file to enable or disable
+compilation of the testing code.</em>
+</p>
+
+<h2> Theme 0: testing code </h2>
+<p>
+The code in this writing is accompanied with test cases.
+Writing a script that reports errors when the actual and
+the expected output differ is left as an exercise to the
+reader.
+</p>
+
+<pre>[tests] [examples] OR [IF]
+\ a talking comment allowing the user to compare
+\ actual test output with the expected output
+\ ( "comment" -- ) print "comment" and perform CR
+: &lt;=== ." &lt;=== " source tuck &gt;in @ /string type &gt;in ! cr ;
+\ Use like:
+\  1 2 3 . . . &lt;=== "3 2 1"
+[THEN]
+</pre>
+
+[examples] [IF]
+<h2> Theme 1: execute it later </h2>
+<pre>: give&gt; r&gt; ;
+: enter &gt;r ;
+
+: test-1 ." right now" give&gt; ." later " ;
+
+test-1 &lt;=== "right now"
+.s &lt;=== one value on the stack
+enter &lt;=== "later"
+</pre>
+<p>
+The word GIVE&gt; splits the definition of TEST-1 into two parts.
+When TEST-1 is invoked, the first part is executed immediately,
+and the address of the second part's code is placed onto the data stack.
+We may execute it later using the word ENTER .
+Note also that after executing the first part of TEST-1 we can perform
+any actions before executing the second part.
+</p> <p>
+Doesn't this resemble anything? Maybe, recursion?
+In fact, this resembles a procedure call.
+We stop execution of the calling routine (whose state is saved
+on a stack) to execute a sub-routine, and after execution of
+sub-routine execution of the routine resumes.
+</p> 
+0 [IF]
+<p>
+In case that the definitions of GIVE&gt; and ENTER look too complicated,
+here is a commented version.
+Please mind that a change on the top of the interpretation stack
+means a control transfer, this is why there are calls and exits.
+</p>
+<pre>\ leave address of code that follows GIVE&gt; on the data stack
+\ and exit the current definition
+: give&gt; r&gt; ; \ ( i: addr -- ) ( -- addr )
+
+\ enter (that is, call) the code whose address is on the data stack;
+\ after exiting that code, control will return to the code
+\ that follows ENTER
+: enter &gt;r ; \ ( addr -- ) ( i: -- addr )
+</pre>
+<p>
+If you wonder what happens with return addresses, the answer is: 
+nothing happens. Here's the stack comment including them.
+(You see, ra is not changed, and therefore may be omitted.)
+</p>
+<pre>\ ra is loaded into the interpretation pointer, that is,
+\ control is transferred to ra; this is an exit
+: give&gt; r&gt; ; \ ( i: ra addr -- ra ) ( -- addr )
+
+\ ra is pushed out of interpretation pointer onto
+\ the return stack, and the interpretation pointer is
+\ loaded with addr; this is a call
+: enter &gt;r ; \ ( addr -- ) ( i: ra -- ra addr )
+</pre>
+[THEN]
+<p>
+And now some usage examples.
+In the following example the information saved on the data stack
+includes an integer in addition to a code address. Note also that
+the second part contains a jump into the first part (this jump is
+compiled by BEGIN and AGAIN).
+</p>
+<pre>: test-2 1 begin dup . give&gt; ." , " 1+ again ;
+cr
+test-2 &lt;=== "1"
+enter &lt;=== ", 2"
+enter &lt;=== ", 3"
+enter &lt;=== ", 4"
+.s &lt;=== two values on the stack: 4 and an address
+2drop
+</pre>
+<p>
+And the next example, where two words GIVE&gt; split the word
+TEST-3 into three parts, shows that the code address indeed
+determines the state of computation:
+</p>
+<pre>: test-3 1 begin dup . give&gt; 2* ." ; " dup . give&gt; 1+ again ;
+cr
+test-3 &lt;=== "1"
+enter &lt;=== "; 2"
+enter &lt;=== "3"
+enter &lt;=== "; 6"
+enter &lt;=== "7"
+.s &lt;=== 7 and address of the second part
+enter &lt;=== "; 14"
+.s &lt;=== 14 and address of the third part
+enter &lt;=== "15"
+.s &lt;=== 15 and address of the second part
+enter &lt;=== "; 30"
+.s &lt;=== 30 and address of the third part
+2drop
+</pre>
+<p>
+Can such addresses be executed with EXECUTE? In the general case, no.
+EXECUTE can execute colon definitions, but it also can execute
+definitions that are not colon definitions, for example, constants,
+the type of definition is encoded in so-called "code field", 
+and EXECUTE expects a code field address rather than an address 
+returned by GIVE&gt;.
+(Strictly speaking, it's even worse: the values passed to EXECUTE
+are called "execution tokens" because they are not necessarily
+addresses. The system may keep all code fields in a single array,
+and execution tokens will be indexes of code fields in that array.)
+</p> <p>
+And, well... isn't it dangerous to pass code addresses and transfer
+control to them? What will happen if the top stack item is not a code address?
+Yes, it is dangerous. Therefore we will add protection to GIVE&gt;.
+</p>
+[THEN]
+<b> <pre>HEX
+
+[UNDEFINED] ?pairs [IF]
+: ?pairs xor abort" mispaired words" ;
+[THEN]
+
+\ plan the code that follows cs-give&gt; for future execution
+\ by the word end
+: cs-give&gt; ( c: -- ra tag ) ( i: ra -- )
+    r&gt; 315
+;
+\ execute the code earlier "planned for future execution"
+\ by cs-give&gt;
+: end ( c: ra tag -- ) ( i: -- ra )
+    315 ?pairs &gt;r
+; immediate
+
+</pre> </b>
+<p>
+We see the <i>control-flow stack</i> label "c:" in the stack comments
+of the above definition. The control-flow stack is the (data)
+stack used at compile-time. ANS Forth has introduced the notion
+of control-flow stack because in theory it does not need to be the 
+same as the data stack; in practice, in all implementations
+they are the same because <em>they need not be different.</em>
+(I have heard reports about experimental systems with a separate
+control-flow stack, but I have not heard anything about
+added value achieved by this; in fact, even if the
+separate control-flow stack approach has its advantages, the code 
+that dares to use these advantages becomes dependent on them
+and non-portable, which is a disadvantage.) So don't bother:
+"c:" practically means "the control structure stuff on the 
+data stack".
+</p>
+<p>
+You probably have mentioned the word HEX. When you debug compiling
+words, you have to look at the code that they generate. You have
+to use the word DUMP. And the word DUMP displays everything in
+hexadecimal, both the addresses and the memory contents. So if you
+want to see the addresses and offsets always in the same
+representation (you do want it), you have to work in hexadecimal.
+(Can octal be used instead of hexadecimal? No: in octal the address
+26750731110 will be shown as bytes 110 262 243 267, while in hexadecimal
+B7A3B248 will be split into bytes as 48 B2 A3 B7).
+</p> <p>
+Another very useful debugging tool is the one-line decompiler.
+It is a pity that this decompiler is not portable:
+</p><pre>\ T32Forth:
+\ : xsee begin dup @ dup u. &gt;name .name space cell+ key bl &lt;&gt; until u. ;
+\ Win32Forth:
+\ : xsee begin dup @ dup u. .name space cell+ key bl &lt;&gt; until u. ;
+\ GForth:
+\ : xsee begin dup @ dup u. threaded&gt;name ?dup if .name else
+\ dup @ body&gt; &gt;name ?dup if ." &amp;" .name then then space cell+ key bl &lt;&gt; until u. ;
+\ Use:
+\ ' xsee xsee
+</pre>
+<p></p>
+[examples] [IF]
+<h2> Theme 2: all control strutures can terminate with the same word }end </h2>
+<p>
+The standard specifies that control structure words leave information
+about unfinished control structures on the so-called "control structure
+stack". In practice, nobody implements a separate stack for that purpose,
+using the Forth data stack instead. That is, IF starts a control structure,
+and until THEN finishes it, there will be something on the data stack.
+</p> <p>
+Please do not be confused: all this happens at compile-time. When
+the generated code executes, these values do not exist anymore.
+</p> <p>
+First of all, we want to find out how many cells are allocated for one
+so-called "orig" value, left by words like IF at compilation time.
+</p>
+<pre>0 value cs-size
+:noname [ depth to cs-size ] ahead [ depth cs-size - to cs-size ] then ; drop
+</pre>
+<p>
+Strictly speaking, the "dest" value left by words like BEGIN theoretically
+can occupy a different number of cells, but in real life this never happens
+because by allowing orig and dest of different size, an implementor would
+first of all create a lot of silly job for himself.
+</p> <p>
+Now, a word that allows to evaluate a portion of text multiple times.
+There's nothing special, it extracts '}'-delimited text from the input
+stream and applies EVALUATE to it as many times as necessary.
+2&gt;R and 2R&gt; around EVALUATE hide the address and lengh of the
+evaluated string from the evaluated code. This word is immediate,
+it may be executed at compile-time. But how can we pass an integer
+to it? If we write 2 TIMES{ SOMETHING } inside a colon definition,
+2 will be compiled rather than placed on the stack. We will have
+to write [ 2 ] TIMES{ SOMETHING }, the brackets make a temporarily
+switch to interpretation state. 
+</p>
+<pre>( n "text}" -- )
+: times{ [char] } parse rot 0 ?do 2dup 2&gt;r evaluate 2r&gt; loop 2drop ; immediate
+
+: cs-&gt;r [ cs-size ] times{ postpone &gt;r } ; immediate
+: cs-r&gt; [ cs-size ] times{ postpone r&gt; } ; immediate
+</pre>
+<p>
+Now, with
+</p>
+<pre>: {give&gt; r&gt; 315 ;
+: }end 315 ?pairs &gt;r ; immediate
+</pre> <p>
+we can define
+</p> <pre>: if{ postpone if {give&gt; postpone then ; immediate
+: }else{ postpone ahead cs-&gt;r postpone }end cs-r&gt; {give&gt; postpone then ; immediate
+
+: begin{ postpone begin {give&gt; postpone again ; immediate
+: }while{ postpone if {give&gt; cs-&gt;r postpone }end cs-r&gt; postpone then ; immediate
+: }break postpone ahead cs-&gt;r postpone }end cs-r&gt; {give&gt; cs-&gt;r postpone }end cs-r&gt; postpone then ; immediate
+
+: myabs dup 0&lt; if{ negate }end ;
+: mymax 2dup &lt; if{ nip }else{ drop }end ;
+1 myabs . &lt;=== "1"
+-2 myabs . &lt;=== "2"
+-4 3 mymax . &lt;=== "3"
+4 3 mymax . &lt;=== "4"
+
+: mask \ xx000 11000 -- xx 
+  tuck and swap begin{ dup 1 and 0= }while{ d2/ }end drop ;
+
+050 0f0 mask . &lt;=== "5" 
+
+\ multiple whiles
+\ count occurences of the bit pattern "10" in low bits
+: count10 ( x -- n )
+  0 &gt;r
+  begin{ dup 1 and 0= }while{ 2/ dup 1 and }while{ 2/ r&gt; 1+ &gt;r }end
+  drop r&gt; ;
+
+0aaa count10 . &lt;=== "6"
+
+\ the loop exits if bits 0, 2, 4... are set, or if bits 1, 3, 5... are zero
+: test10
+  begin{
+      dup 1 and if{ ." first exit " }break
+      2/ dup 1 and 0= if{ ." second exit " }break
+      2/
+  }end drop ;
+
+1aa test10 &lt;=== "first exit"
+12a test10 &lt;=== "second exit"
+</pre>
+<p>
+Of course, these control structures are not practically meaningful
+because they are equivalent to the existing structures.
+</p> <p>
+What I want to show is that the traditional approach is not the only possible one, that is, given
+</p>
+<pre>: my?branch if r&gt; cell+ &gt;r else r&gt; @ &gt;r then ;
+\ Note: this definition is explained in Theme 6 below
+</pre>
+<p>
+instead of the traditional
+</p> <pre>: myif postpone my?branch here 0 , 2 ; immediate
+: mythen 2 ?pairs here swap ! ; immediate
+</pre> <p>
+we can have only one definition:
+</p> <pre>: myif{ postpone my?branch here 0 , {give&gt; here swap ! ; immediate
+</pre>
+<p>
+Note that the ?PAIRS protection is built into {GIVE&gt; and }END.
+</p>
+<pre>: myabs2 dup 0&lt; myif{ negate }end ;
+7 myabs2 . &lt;=== "7"
+-8 myabs2 . &lt;=== "8"
+</pre>
+
+<h2> Theme 3: compiling or interpreting? </h2>
+
+<p>
+We want to implement the following syntax:</p><pre> choose
+   value1 when action1 end
+   value2 when action2 end
+   ....
+   other default-action end
+ end
+</pre>
+But compiled value1 and value2 will be available only at run-time,
+while we need them at code generation time!
+The solution is: the system between CHOOSE and WHEN, as well as
+between END and WHEN, must be in interpretation state.
+<p></p>
+[THEN]
+
+<h2> Theme 4: linked list allocated on the stack </h2>
+
+<p>
+We want to be able to specify multiple values for one WHEN clause,
+as well as value ranges. Multiple values are no problem: if we
+remember the initial stack depth, we can find out how many more
+values have been placed on the stack.
+</p> <p>
+So the syntax will be like
+</p><pre>   value1 value2 value3 when{ action }end
+</pre>
+But how do we distinguish between single values and ranges?
+<p></p> <p>
+It is easy to allocate lists on the stack in C/C++, for example:
+</p><pre>struct ListElem { int data; ListElem* next; };
+ListElem* head = NULL;
+void printList(ListElem*p){for(;p;p=p-&gt;next)printf("%i ",p-&gt;data);}
+void test(int n) { ListElem x={n,head};head=&amp;x; if(n)test(n-1);else printList(head);}
+int main(){test(8);return 0;}
+</pre>
+Surprisingly, the same technique may be used in Forth.
+Instead of taking an address of an element allocated on the data
+stack, we can use the stack depth. But in this case it is better
+not to use 0 as the null pointer, because 0 is a valid stack depth.
+Any negative value would do.
+<p></p> <p>
+Now, we can arrange ranges into a linked list on the data stack.
+If a stack item belongs to the linked list, the item below it
+and the item above it represent a range. All other stack items
+are single values. The syntax will look like:
+</p><pre> value1 value2 ... value3 value4 ... value5 value6 when action end
+</pre>
+I have to note that problems for which this approach
+is an adequate path to solution do not occur frequently.
+More precisely, I myself have so far encountered only one
+such problem, namely, this one.
+<p></p> <p>
+I also believe that I have to make the following notice before
+someone else does it.
+Never, never, never allocate a linked list on the data stack.
+The data stack is for single values, not for complex structures.
+And this particular case is an exception, a very arguable exception.
+</p>
+
+<b> <pre>\ the head element of the range list
+variable range-list
+-8 range-list !
+
+\ allocate a range list element. Use: x1 ... x2
+: ... ( x1 -- x1 ^next-in-list )
+    range-list @ depth range-list !
+;
+\ true if the head element of range list is at the stack top.
+: range? ( x1 ^next-in-list x2 -- x1 ^next-in-list x2 true )
+         ( anything-else -- anything-else false )
+    depth 1- range-list @ =
+;
+\ remove a range list element from the data stack top.
+\ Use: ( x1 ^next x2 ) &gt;r -range r&gt; consume_x1_and_x2
+: -range ( ^next-in-list -- )
+    range-list !
+;
+</pre> </b>
+<pre>[tests] [IF]
+: .ranges begin depth 0&gt; while range? if &gt;r -range . ." ... " r&gt; . else . then repeat ;
+1 2 3 40 ... 50 6 70 ... 80 9 cr .ranges &lt;=== "9 70 ... 80 6 40 ... 50 3 2 1"
+10 ... 20 3 4 5 6 70 ... 80 cr .ranges &lt;=== "70 ... 80 6 5 4 3 10 ... 20"
+10 ... 20 cr .ranges &lt;=== "10 ... 20"
+1 cr .ranges &lt;=== "1"
+cr 
+[THEN]
+</pre>
+<p>
+It may sound a bit strange, but some systems have no UMAX but do have UMIN.
+</p>
+<b> <pre>[UNDEFINED] umin [IF]
+: umin ( a b -- min{a,b} ) 2dup u&lt; if drop else nip then ;
+[THEN]
+</pre> </b> <pre>[tests] [IF]
+11 12 umin . &lt;=== "11"
+60 12 umin . &lt;=== "12"
+-1 13 umin . &lt;=== "13"
+-14 -1 umin . &lt;=== "-14"
+[THEN]
+</pre> <b> <pre>: pluck 2 pick ;
+\ : -rot rot rot ;
+</pre> </b>
+
+<h2> Theme 5: 2's complement maths for both signed and unsigned </h2>
+<p>
+We want CHOOSE to allow both signed and unsigned numbers as case labels.
+At second, we want to minimize the jump address table.
+So we need to know the maximal and minimal values of case labels.
+But to perform comparison, we need to know whether it must be
+signed or unsigned comparison. How do we find out whether the 
+values are signed or unsigned?
+</p> <p>
+The answer is: we do not need to know if they are signed or unsigned.
+If we subtract one value from another, the result will be either positive
+or negative. If the result is positive, we subtracted the smaller from
+the larger. This is correct if we assume that the jump table size,
+and therefore the difference between any two case labels, is
+smaller than maximal signed integer.
+</p> <p>
+We will represent the range of case labels with the pair
+(start_value, max_value - start_value). This resembles the
+(address, length) string representation, with exception that
+in our case <i> size = max_value - start_value </i> is inclusive.
+</p>
+<b> <pre>\ extend the interval (start,size) to include x
+: interval+ ( start size x -- start' size' )
+     pluck - dup 0&lt; if /string else max then
+;
+</pre> </b> <pre>[tests] [IF]
+cr
+-8 0 .s &lt;=== "-8 0"
+-7 interval+ .s &lt;=== "-8 1"
+-9 interval+ .s &lt;=== "-9 2"
+0 interval+ .s &lt;=== "-9 9"
+-20 interval+ .s &lt;=== "-20 20"
+2drop
+[THEN]
+</pre>
+<p>
+In fact, there is a good place where you can find an instance of such tricks:
+the ANS Forth standard includes, in the informative annex A (Rationale),
+along with explanatory notes, the following definition of WITHIN:
+</p><pre>: WITHIN ( value-to-test low-bound high-bound -- flag ) OVER - &gt;R - R&gt; U&lt; ;
+</pre>
+<p></p>
+
+<h2> No-theme: just code </h2>
+
+<b> <pre>0 value ranges-bottom
+\ convert single values and ellipsis pairs into (from,to) pairs 
+: mix&gt;ranges ( n*{ x | x1 ^next-in-list x2 } -- n*{ x1 x2 })
+  depth ranges-bottom &lt;&gt; if range? if &gt;r -range &gt;r recurse r&gt; r&gt; else &gt;r recurse r&gt; dup then then
+;
+\ calculate the new case labels interval,
+\ based on the old interval and specified case label ranges
+: retrieve-interval ( [start size] flag z z n*{ x1 x2 } -- [start size] flag z z n*{ x1 x2 } start' size' )
+  2&gt;r depth ranges-bottom =
+  if    pluck if 4 pick 4 pick over + 2r&gt; rot interval+ rot interval+ else 2r&gt; then
+  else  2r&gt; 2swap 2&gt;r recurse 2r@ 2swap r&gt; interval+ r&gt; interval+
+  then
+;
+variable ptable
+variable pdefault
+\ store addr into jump table entries corresponding 
+\ to n case label ranges x11 x12 ... xn1 xn2;
+\ the jump table address is taken from the variable PTABLE
+: fill-table ( x11 x12 ... xn1 xn2 2*n addr -- )
+	swap
+	dup 1 and abort" bug at point 1"
+	2/ 0 ?do  ( x1 x2 addr )
+		-rot 1+ swap
+		do	dup i ptable @ @ -
+			   dup ptable @ cell+ @ u&lt; 0= abort" bug at point 2"
+			2 + cells ptable @ + !
+	loop	loop
+	drop 
+;
+\ create a jump table and store its address in PTABLE;
+\ if PDEFAULT is set to zero, set it to point to the 
+\ code that will follow the jump table.
+: make-table ( start size flag -- )
+	0= abort" no values specified"
+	align here ptable !
+	1+ swap , dup , 1+
+	pdefault @ 0= if here over cells + pdefault ! then
+	0 ?do pdefault @ , loop
+;
+</pre> </b>
+[examples] [IF]
+<h2> Theme 6: control transfers due to return address manipulations </h2>
+<p>
+It is well-known that procedure calls are nested according to the LIFO principle,
+and that return addresses are saved on the return stack.
+Nevertheless, to avoid confusion, we need to introduce one
+more notion: the interpretation stack.
+</p> <p>
+So, procedure X calls procedure Y that calls procedure Z.
+The interpretation stack contains poiters to all these three
+procedures.
+But the topmost item, that points into Z's code, changes each time a
+new instruction is executed. This is the interpretation pointer, or IP.
+The other two items do not change while Z executes, and are stored at
+the return stack. So, the return stack and IP form the interpretation
+stack, IP being the interpretation stack top.
+</p> <p>
+(Here IP is a Forth virtual machine register, we do not consider processor registers.)
+</p> <p>Each control transfer is a change on the interpretation stack.
+For example, a call adds one more item onto the interpretation stack,
+an exit removes the topmost item, and a jump changes IP, the
+interpretation stack top.
+</p> <p>
+(An important exercise for the reader: explain in terms of the return stack and IP what happens during a call and an exit.)
+</p> <p>It must be noted that access to IP itself is not very
+meaningful because IP, at first, changes each time a new primitive is
+executed, and at second, writing to IP will cause an immediate control
+transfer. In contrast, changes on the return stack, that is, changes
+that do not affect IP, do not result in an immediate control transfer.
+</p> <p>We, nevertheless, can give an example of organizing a loop by
+writing to IP. The method may be used as a technique for implementing
+loops, provided that one invents a readable syntax and stores the jump
+destination address not at the data stack.
+</p>
+\ <!--
+: ip@ r@ ; : ip! r> drop >r ;
+\ -->
+<pre>: print1to10 1 ip@ swap dup . dup 10 &lt; if 1+ swap dup ip! then 2drop ;
+print1to10 &lt;=== 1 2 3 4 5 6 7 8 9 10
+: _print1to10 1 begin dup . dup 10 &lt; while 1+ repeat drop ;
+</pre>
+<p>
+But if writing to IP results in an immediate control transfer, is there
+a more convenient way to make changes on the interpretation stack?
+There is an important feature: when we call a procedure, the return
+stack becomes what the interpretation stack was. And vice versa, 
+upon exit, the interpretation stack becomes what the return stack was.
+</p> <p>
+So, to make changes on the interpretation stack, we call
+an auxiliary procedure. That procedure can do these changes
+on the return stack, and after exiting, the state of
+the return stack will become the state of the interpretation stack.
+</p> <p>
+For example, EXIT removes the top element from the interpretation
+stack. Its equivalent definition is:
+</p><pre>\ : myexit r&gt; drop ;
+</pre>
+Now, we can define the words IP@ and IP! in Forth:
+<pre>: ip@ r@ ;
+</pre>
+And for IP! we would like to use R!, but there is no R! in Forth. So
+<pre>: ip@ r&gt; dup &gt;r ; \ equivalent to : ip@ r@ ;
+: ip! r&gt; drop &gt;r ;
+</pre>
+<p></p>
+[THEN]
+
+<h2> Theme 7: data in threaded code </h2>
+
+<p>
+Although not all systems use threaded code, good optimizing compilers
+generate code that is functionally equivalent to threaded code, so we
+will consider a classical threaded code model.
+</p> <p>
+Threaded code is a sequence of references to procedures. The threaded code
+interpreter calls the procedures one by one, each time advancing IP that always
+points to the next procedure. If the interpreter encounters something that is not
+a reference to procedure, it will crash. But nevertheless it is possible to
+include data items into threaded code. The trick is that the procedures compiled
+before data items must make sure that the interpreter does not try to process
+these data items. Typically, this is done by advancing IP by the size of data items
+compiled into the code: this causes a control transfer to the code that follows the
+data items. If the data are not prefixed with a procedure that makes
+the interpreter bypass the data, there will be a crash.
+</p> <p>
+And how these data may be accessed? The procedure compiled before the data receives
+the data address in IP.
+</p> <p>
+For example, the word LIT fetches a data cell that follows it in threaded code,
+and advances IP past the data:
+</p><pre>: LIT ( -- x ) ( i: addr[x] -- addr+ ) R@ @ R&gt; CELL+ &gt;R ;
+: LITERAL postpone LIT , ; immediate
+</pre>
+LIT receives the address of x in IP, but it is a colon definition,
+implemented in threaded code, this threaded code is called, and at
+this moment what was IP becomes the return stack top. (In other words, the
+address of x is pushed from IP onto the return stack.)
+So R@ @ fetches x, and R&gt; CELL+ &gt;R makes the return stack top
+point to the threaded code element that follows x. After exiting
+the procedure, that address of the next code element will be in IP.
+<p></p> <p>
+Unconditional branch may be defined as
+</p><pre>: BRANCH R&gt; @ &gt;R ; ( i: addr1[addr2] -- addr2 )</pre>
+and two words that compile BRANCH and build a forward reference next to it are
+<pre>: AHEAD postpone BRANCH  here 0 , 2 ; immediate
+: THEN 2 ?pairs here swap ! ; immediate
+</pre>
+The number 2 in AHEAD and 2 ?PAIRS in THEN are necessary for
+syntax checking: if THEN discovers that the stack top is not 2,
+it concludes that control structures are not properly nested,
+and reports an error. (Any number would do, but most systems use 2.)
+POSTPONE BRANCH compiles BRANCH into the code, and HERE 0 , reserves
+a cell in the code; the value 0 stored in this cell is never used.
+By the moment THEN is executed, the code between AHEAD and THEN
+is already compiled, and the dictionary pointer HERE points at
+the memory unit that follows this code; this is the address at
+which the code following THEN is going to be compiled. So THEN
+executes HERE SWAP ! and stores the address of code that follows
+THEN into the reference created by AHEAD. (At the moment the code
+after THEN is not yet compiled, but it will be there.)
+<p></p> <p>
+The word ?BRANCH either performs a branch or bypasses the reference,
+depending on the value at the stack top:
+</p><pre>: ?BRANCH if R&gt; CELL+ &gt;R else R&gt; @ &gt;R then ;
+</pre>
+and the compiling word IF is analogous to AHEAD:
+<pre>: IF postpone ?BRANCH  here 0 , 2 ; immediate
+</pre>
+It must be underlined that in all these examples, LIT, BRANCH,
+and ?BRANCH, there are two important parts hidden behind the
+procedure definition notation: a call of a threaded code fragment
+and an exit from it. The call pushes IP onto the return stack
+(and loads IP with a new value),
+and EXIT pops the return stack top into IP.
+<p></p> <p>
+Note. There is a tradition to use parens in the names of auxiliary
+functions compiled into threaded code but not used in the source.
+For example, </p><pre>: LOOP POSTPONE (LOOP) ...</pre> looks almost natural...
+<p></p>
+
+<h2> Theme 8: more playing with time </h2>
+<p>
+We want to use single-pass compilation. The code of the control
+structure must begin with a word, let us call it (CHOOSE), that
+chooses the appropriate branch using a jump table.
+But to allocate the jump table, we need to know its size,
+but the size is known only after encountering all WHEN clauses,
+that is, at the end of the control structure.
+Therefore, we will allocate the jump table only at the end
+of the control structure, and the word (CHOOSE) will access it via a pointer.
+</p> <p>
+Commenting the definition of (CHOOSE), let us note that
+in its definition R&gt; @ &gt;R is not a control transfer
+because it is not folowed by EXIT. The word (CHOOSE)
+is followed by a pointer to the jump table, R&gt; gets the
+address of the pointer, @ gets the address of the jump table,
+and &gt;R places that address onto the return stack
+not because we are going to transfer control there,
+but because it is convenient to keep the jump table
+address on the return stack. The jump table address
+is later removed by R&gt;, an offset is added to it,
+and then @ fetches the destination address and &gt;R and EXIT
+transfer control to it.
+</p>
+<b> <pre>\ transfer control to a corresponding destination in the jump table;
+\ the default destination is used if i is out of (start,size) range
+: (choose) ( x -- ) ( i: addr[start size dest0 ... destN dest-default] -- dest[x-start] )
+	R&gt; @ &gt;R
+	R@ @ - R@ cell+ @ umin
+	2 + cells R&gt; + @ &gt;R
+;
+</pre> </b>
+<p>
+Note that UMIN considers negative numbers as very large positive ones,
+which enables us to avoid a separate check on difference x-start less than 0.
+</p>
+<h2> No-theme: just code </h2>
+<b> <pre>
+: choose
+		ptable @ 0 ptable ! pdefault @ 0 pdefault ! -8 range-list !
+		postpone (choose) here 0 ,
+		false depth 2 + to ranges-bottom [compile] [
+	cs-give&gt;	] drop ptable @ swap ! pdefault ! ptable !
+; immediate
+: when
+		depth ranges-bottom &lt;= abort" case values not specified"
+		mix&gt;ranges
+		dup 0 retrieve-interval 2&gt;r
+		depth ranges-bottom - here ( code_space_here!!! ) 2r&gt; ]
+    cs-give&gt;    2&gt;r postpone ahead 2r&gt; true depth 2 + to ranges-bottom [compile] [
+    cs-give&gt;    ] ptable @ 0= if make-table else 2drop drop then
+		postpone then fill-table [compile] [ postpone end
+;
+: other
+		depth ranges-bottom &lt;&gt; abort" case values must not be specified"
+		pluck if 4 pick 4 pick true else 0 0 0 then
+		here pdefault ! ]
+     cs-give&gt;   &gt;r 2&gt;r postpone ahead 2r&gt; r&gt; depth 2 + to ranges-bottom [compile] [
+     cs-give&gt;   ] ptable @ 0= if make-table else 2drop drop then
+                postpone then [compile] [ postpone end
+;
+
+DECIMAL 
+</pre> </b> <pre>[tests] [examples] OR [IF]
+: test choose 1 when ." one" end 2 when ." two" end end ."  end" ;
+cr
+1 test &lt;=== "one end"
+2 test &lt;=== "two end"
+0 test &lt;=== "end"
+3 test &lt;=== "end"
+-1 test &lt;=== "end"
+: test1 choose 1 when ." one" end 2 when ." two" end other ." default" end end ."  end" ;
+cr
+1 test1 &lt;=== "one end"
+2 test1 &lt;=== "two end"
+0 test1 &lt;=== "default end"
+3 test1 &lt;=== "default end"
+-1 test1 &lt;=== "default end"
+: test2 choose 1 10 ... 20 when ." one" end 2 30 ... 40 when ." two" end other ." default" end end ."  end" ;
+cr
+1 test2 &lt;=== "one end"
+10 test2 &lt;=== "one end"
+11 test2 &lt;=== "one end"
+20 test2 &lt;=== "one end"
+2 test2 &lt;=== "two end"
+30 test2 &lt;=== "two end"
+31 test2 &lt;=== "two end"
+40 test2 &lt;=== "two end"
+0 test2 &lt;=== "default end"
+3 test2 &lt;=== "default end"
+22 test2 &lt;=== "default end"
+21 test2 &lt;=== "default end"
+41 test2 &lt;=== "default end"
+-1 test2 &lt;=== "default end"
+: test3 choose 1 ... 2  when ." one" end 4 when ." four" end other ." default" end end ."  end" ;
+cr
+5 test3 &lt;=== "default end"
+4 test3 &lt;=== "four end"
+3 test3 &lt;=== "default end"
+2 test3 &lt;=== "one end"
+1 test3 &lt;=== "one end"
+0 test3 &lt;=== "default end"
+-1 test3 &lt;=== "default end"
+-2 test3 &lt;=== "default end"
+
+: testc
+  choose
+       other s" not recognized" end
+    char a char e char i char o char u char y
+      when s" vowel" end
+    char b ... char d char f ... char h char k ... char n char p ... char t char v char x char z
+      when s" consonnant" end
+    char j char w
+      when s" semi-vowel" end
+  end type
+;
+
+: testcc   $80 $60 DO cr i emit ."  -- " i testc LOOP ;
+.( please, run testcc manually) CR
+
+: test4 
+	choose  	-1 1 rshift invert when  ." min int"  end
+			-1 1 rshift when  ." max int"  end
+			other  ." just an integer"  end
+	end space ;
+
+: test4a -1 1 rshift 3 + dup 4 - do i . i test4 loop ;
+HEX
+test4a &lt;=== 7FFFFFFE just an integer 7FFFFFFF max int -80000000 min int -7FFFFFFF just an integer
+DECIMAL
+: testn
+	0&lt; swap 0&lt; swap
+	choose
+		true when	choose
+					true when s" - -" end
+					false when s" - +" end
+				end
+		end
+		false when	choose
+					true when s" + -" end
+					false when s" + +" end
+				end
+		end
+	end
+	type space space
+;
+: testn2
+	0&lt; swap 0&lt; swap
+	choose
+	    -5 ... true when	choose
+					-5 ... true when s" - -" end
+					false ... 5 when s" - +" end
+				end
+		end
+	    false ... 5 when	choose
+					-5 ... true when s" + -" end
+					false ... 5 when s" + +" end
+				end
+		end
+	end
+	type space space
+;
+: testnn
+	1 -1 do 1 -1 do j i 2dup . . testn loop loop ;
+: testnn2
+	1 -1 do 1 -1 do j i 2dup . . testn2 loop loop ;
+
+testnn &lt;=== -1 -1 - -  0 -1 + -  -1 0 - +  0 0 + + 
+testnn2 &lt;=== -1 -1 - -  0 -1 + -  -1 0 - +  0 0 + + 
+[THEN]
+</pre>
+
+[examples] [IF]
+<h2> Theme 9: one more way to bypass and access data in the code </h2>
+<p>
+Above, we used auxiliary words that:
+</p><ul><li> retrieve the data address
+</li><li> make the interpreter get around the data
+</li><li> process the data
+</li></ul>
+(It should be noted that in the case of LIT data processing boiled down to fetching.)
+<p></p> <p>
+For example, we can define an equivalent of ." as
+</p>
+<pre>: (my.") ( i: addr[c string] -- addr+ ) R&gt; count 2dup type + aligned &gt;r ;
+: my."
+    [char] " parse
+    POSTPONE (my.")
+    dup c, here swap dup allot move align
+; immediate
+: test-print 1 . my." some text " 2 . ;
+test-print &lt;=== 1 some text 2
+</pre>
+<p>
+Alternatively, we can define it as:
+</p>
+<pre>: (another-type) count type ;
+: another."
+    [char] " parse
+    2&gt;R POSTPONE AHEAD 2R&gt;
+    HERE &gt;R dup c, here swap dup allot move align
+    POSTPONE THEN R&gt;
+    POSTPONE LITERAL
+    POSTPONE (another-type)
+; immediate
+: test-print2 1 . another." some text " 2 . ;
+test-print2 &lt;=== 1 some text 2
+</pre>
+<p>
+Please note that both methods do not comply with ANS Forth.
+If you read the document carefully, you will see that
+standard programs are not allowed to compile data (that is,
+allot data in the forth dictionary) between
+AHEAD and THEN. The standard simply does not distinguish
+AHEAD and THEN from other Forth words. But there indeed is
+one problem related to allocation of data in the code.
+The alignment requirement for the data and the code may
+be different. There is no guarantee that after ALIGN
+there will be no alignment exception at THEN or the
+word after THEN.
+</p>
+[THEN]
+
+
+
+<h2> Theme 10: ANS Forth and these methods </h2>
+<p>
+In my honest opinion, the techniques like those demonstrated above
+are an important part of Forth. But this is arguable, I mean,
+I can imagine that some people will not argee with this.
+</p> <p>
+Ok, let us put it this way: the methods shown above are
+valuable implementation techniques. They are not Forth-specific,
+for example, passing data via the return address was used
+in OS/360 for IBM mainframes. On the other hand, it is
+an important feature of Forth that Forth may be implemented in Forth.
+(The merit of this feature is again arguable, the counter-arguments
+sound like "if we had less systems and more applications, it would
+be easier to make money selling systems").
+</p> <p>
+So we can at least agree that this writing describes a number
+of valuable implementation techniques, and that these techniques
+are not Forth-specific.
+</p> <p>
+As to ANS Forth, the standard defines a portable subset of Forth.
+It does not impose any restrictions on implementation techniques,
+and does not guarantee the implementation technique portability.
+In 1988-1994, the time when ANS Forth was created, the main
+problem of Forth implementations was the 64K barrier imposed by
+the 8086 architecture and the Forth-83 standard. The implementors
+moved different parts of their systems into separate segments,
+out of the data address space. Some systems components could
+be addressed only with a double-size pointer, so-called 
+segment:offset pair. The ANS Forth Technical Committee
+did not even try to standardize access to all these components
+located in unknown address spaces and addressed with pointers
+of unknown size. Instead, the scope of the standard was narrowed
+to portability of access to data structures built by the program
+in the data space.
+</p> <p>
+Now, in 2008, 14 years later, the 64K barrier is not a problem anymore,
+and almost all existing systems have all system structures in the same
+address space. The techniques described in this paper have become
+de-facto portable. I tried them on Gforth, Win32Forth 6, VFX Forth,
+and they worked there.
+</p>
+
+\ <!--
+<h2> More about syntax </h2>
+<p>
+Anton Ertl suggested having a special word to close the structure.
+I believe that <tt>end</tt> is good enough, but cannot resist
+from showing that the suggested change is really easy:
+<b> <pre>
+0 [IF]
+: choose 8 postpone choose ; immediate
+: chosen postpone end 8 ?pairs ; immediate
+[THEN]
+</pre> </b>
+</p>
+\ -->
+
+<h2> Future Work/Exercise for the Reader </h2>
+<p>
+Anton Ertl has suggested the use of balanced trees for the switch
+statement in the cases where a table is not usable.
+Implementation of a tree-based switch statement is left as an
+exercise for the reader. (I only don't believe that there
+will be <em>the</em> reader.) The first thing with this
+exercise is to decide whether we need manual of automatic
+choice between the table-based and the tree-based approaches.
+The argument against automatic choice is that if the switch
+statement is used in a time-critical section, you will not
+really want the compiler to substitute the fast table with 
+a slower tree at the compiler's own initiative.
+</p> <p>
+The second issue is what sort of code to generate. One can 
+generate a tree with pointers to code and find the corresponding
+branch using some search routine. Or one can represent the search
+tree as executable code directing the interpreter to the desired
+branch. For the latter option, there are two sub-options:
+prefix each search tree node with an auxiliary colon definition
+(in the same way as a literal is prefixed with LIT) 
+and use return address manipulations to navigate between nodes,
+or generate code equivalent to a bunch of nested IFs.
+</p>
+
+\ <hr>
+<p>
+<!--
+A perl script to extract the uncommented Forth source
+from this file:
+===begin===
+#!/usr/bin/perl
+open my $file, "choose.htm" or die $!;
+local $/;
+local $_ = <$file>;
+s/<!--.*?(-)->//sg;
+s!</pre>\s</b>.*?<b>\s<pre>!!sg;
+s!</pre>\s</b>.*?\Z!!sg;
+s!\A.*?<b>\s<pre>!!sg;
+open my $output, ">choose.fth" or die $!;
+print $output $_;
+===end===
+-->
+</p>
+\ <h4> history of changes </h4>
+<p>
+</p><ul><li>v 1.0 -- 10 June 2008 -- mlg -- Initial release.
+    <br>To Do:
+    <ol><li> add protection against too large tables;
+    </li><li> show how to have different words for ending a WHEN clause and the CHOOSE construct
+    </li></ol>
+    </li><li>v 1.1 -- 05 Oct 2009 -- Released under GPL; updated description; fixed a bug in testing code;
+        added a perl script to extract the Forth code (see the page source, it's in a html comment).
+</li></ul>
+<p></p>
+\ <!--
+<b>
+\ -->
+
+
+
+
+</body></html>
