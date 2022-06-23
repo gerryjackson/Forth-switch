@@ -17,7 +17,7 @@ contained in a colon definition and may be nested.
 
 ```
 create-switch <name>
-   <values-1> when <actions-1-1> end
+   <values-1> when <actions-1> end
    <values-2> when <actions-2> end
    .....
    <values-n> when <actions-n> end   
