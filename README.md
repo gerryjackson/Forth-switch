@@ -44,7 +44,7 @@ where:
 An example:
 
 ```
-switch foo
+create-switch foo
    0            when  ." zero"     end
    2 1 3 ... 10 when  ." 1 to 10"  end
    -10 ... -1   when  ." -1 to 10" end
@@ -89,8 +89,8 @@ End of tests
 
 -----[ Report ]-------
 Stack empty
-Number of tests:  79
-         passed:  79
+Number of tests:  80
+         passed:  80
          failed:   0
 ----------------------
 ```
