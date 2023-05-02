@@ -2,54 +2,56 @@
 \ ANS/2012 Forth. A difference is that CREATE-SWITCH is a defining word and
 \ may not be nested
 
-\ Copyright (C) G W Jackson 2020
+\ Copyright (C) G W Jackson 2020, 2021, 2023
 
 \ This software is covered by the MIT software license, a copy of which should
 \ have accompanied this file. If not see https://opensource.org/licenses/MIT
 
-\ ---[ Version 1.0.0 ]----------------------------------------------------------
+\ ---[ Version & Copyright ]----------------------------------------------------
 
-: version$  s" 1.0.0" ;
-cr .( Loading switch.fth version ) version$ type
-cr .( Copyright 2020 Gerry Jackson) cr
+: version$  ." 1.0.2" ;
+cr cr .( Loading switch.fth version ) version$
+cr .( Copyright 2020, 2021, 2023 Gerry Jackson) cr
 
 \ ---[ Helpers ]----------------------------------------------------------------
 
 \ Unsigned MIN
-: umin  ( u1 u2 -- u1|u2 )  2dup u> if swap then drop  ;
+: umin  ( u1 u2 -- u1|u2 )  2dup u< if drop exit then nip  ;
 
 \ ---[ switch value extent ]----------------------------------------------------
-\ Creating and extending the overall extent (range) of all switch values before
-\ all WHENs. It updates a (start size) pair, according to a switch value.
-\ Initially (start size) is (0 -1) where the size is negative (i.e. invalid).
-\ Note that the size throughout processing is 1 less than its TRUE value, this
-\ is because the method used to update (start size-1) only works for size-1 but
-\ is efficient (this is inherited from MLG). If the true size is used the code
-\ below fails to work and an alternative definiiton is longer.
+\ Extending the overall extent (range) of all switch values before
+\ all WHENs. It updates a (nmax nmin ) pair of values if a new switch value
+\ is outside the range nmin to nmax
+\ Initially (nmax nmin) is (MININT MAXINT)
 
-: extent+  ( start size n|u -- start' size' )
-   over 0< if nip nip 0 exit then
-   2 pick - dup 0< if /string else max then
-;
+: extent+  ( nmax nmin n -- nmax' nmin' )  tuck min >r max r>  ;
 
 \ ---[ Converting switch values ]-----------------------------------------------
 
 \ In DEPTHS
 \  - the ms cell is the stack depth at the start of a switch subsequence
 \  - the ls cell is the stack depth at the start of the switch sequence
+
 2variable depths
-
 : set-depths  ( -- )  depth dup depths 2!  ;
-
 : subseq-size  ( -- n )  depth depths @ - depth depths !  ;
-
 : no-values?  ( -- f ) depth depths cell+ @ - 0=  ;
 
 \ ---[ Create switch run-time ]-------------------------------------------------
 
+\ MAKE-RUNTIME compiles:
+\  :noname  ( n -- i*x ) start - size umin cells jtad' + @ execute ;
+\ Given:
+\     create-switch foo
+\         ... etc
+\     end
+\ then
+\     n foo
+\ will execute the above :noname definition 
+
 : make-runtime  ( start size jtad -- xt ) \ jtad is jump table address
    2 pick cells +          ( -- start size jtad' )
-   >r >r >r                ( R: -- jtad size start )
+   >r >r >r                ( R: -- jtad' size start )
    :noname
    r> postpone literal postpone - r> postpone literal postpone umin
    postpone cells r> postpone literal postpone + postpone @ postpone execute
@@ -59,21 +61,19 @@ cr .( Copyright 2020 Gerry Jackson) cr
 \ ---[ Jump table generation ]--------------------------------------------------
 
 \ MAKE-TABLE compiles the default xt into dataspace for the jump table. xt is
-\ either the default xt from the OTHER clause or, if none such, a noop xt.
-\ The table contains (size+2) default xts, +2 because:
-\     - size is (actual size - 1)
-\     - +1 for switch values out of range
+\ either the default xt from the OTHER clause or, if none, a noop xt.
+\ The table contains (size+1) default xts, +1 because a cell at the ms cell of
+\ the jump table is used for the xt of the default or OTHER :
+\     size = swmax - swmin + 1   calculated in END-SWITCH
 \ The address returned is:
-\     (table-address - lowest-switch-value(cells))
+\     (table-address - lowest-switch-value (in cells))
 \ so that subsequent processing can use it to load individual switch value xt's
 \ at (ad + switch-value(cells))
-\ xt2 is the execution token of the run time code from MAKE-RUNTIME
 
-: make-table  ( xt start size -- xt start size+1 jtad ) \ jtad jump table ad
-   over cells here - negate >r
-   1+ dup 1+ 0                   ( -- xt start size+1 size+2 0 )
-   do 2 pick , loop
-   r>                            ( -- xt start size+1 jtad )
+: make-table  ( xt start size -- xt start size jtad ) \ jtad jump table ad
+   over cells here - negate >r   ( R: -- jtad )
+   dup 1+ 0 do 2 pick , loop
+   r>                            ( -- xt start size jtad )
 ;
 
 \ SAVE-SUBSEQ-XT
@@ -128,8 +128,9 @@ defer end immediate
 
 \ In END-SWITCH xt3 is the run time execution token saved in the word "name"
 \ created by SWITCH
-: end-switch  ( ad 0 0 [switch-subseq+ depth xt1 xt2]+ start size -- )
-   make-table           ( -- .... start size+1 jtad ) 
+: end-switch  ( ad 0 0 [switch-subseq+ depth xt1 xt2]+ swmax swmin -- )
+   tuck - 1+            ( -- .... start size ) \ start=swmin, size=swmax-swmin+1
+   make-table           ( -- .... start size jtad ) 
    dup >r make-runtime  ( -- ad 0 0 [switch-subseq+ depth xt1 xt2]+ xt3 )
    r> swap load-table   ( -- ad xt3 )
    swap !
@@ -137,35 +138,36 @@ defer end immediate
 
 :noname ; constant noop-xt
 
-: end-when  ( start size -- xt1 xt2 start size )
+: end-when  ( swmax swmin -- xt1 xt2 swmax swmin )
    postpone ; noop-xt 2swap   \ NOOP is the default default-xt
    set-depths
    ['] end-switch is end
 ; immediate
 
 \ END-OTHER replaces the default xt which is xt2
-: end-other    ( xt1 xt2 start size xt3 -- xt1 xt3 start size)
+: end-other    ( xt1 xt2 swmax swmin xt3 -- xt1 xt3 swmax swmin)
    postpone ;
    -rot 2>r nip 2r>
    ['] end-switch is end
 ; immediate
 
 : ?values  ( -- )
-   no-values? if cr  abort" Error: no switch values before WHEN or  a ... range" then
+   no-values?
+   if cr true abort" Error: no switch values before WHEN or ..." then
 ;
 
-: (...)  ( start size ni .. n1 -- ni .. n1 i start' size' )
-   subseq-size dup >r   ( -- start size ni .. n1 i )  ( R: -- n0 i )
+: (...)  ( swmax swmin ni .. n1 -- ni .. n1 i swmax' swmin' )
+   subseq-size dup >r   ( -- swmax swmin ni .. n1 i )  ( R: -- i )
    [: ?dup 0> if 1- swap >r recurse r@ extent+ r> -rot then ;]
-   execute                 ( -- ni .. n1 start' size' )
-   r> -rot                 ( -- ni .. n1 i start' size' )
+   execute                 ( -- ni .. n1 swmax' swmin' )
+   r> -rot                 ( -- ni .. n1 i swmax' swmin' )
 ;
 
-: ...  ( start size ni .. n0 -- ni .. n1 i start' size' n0 )
+: ...  ( swmax swmin ni .. n0 -- ni .. n1 i swmax' swmin' n0 )
    ?values  >r (...) r>
 ;
 
-: when  ( [ n+ i ]* start size n2+ -- [ n+ i ]* n2+ i2 depth start' size' xt )
+: when  ( [ n+ i ]* swmax swmin n2+ -- [ n+ i ]* n2+ i2 depth swmax' swmin' xt )
    ?values (...)
    depths cell+ @ 2 - -rot        \ Base depth of the switch sequence
    ['] end-when is end
@@ -178,7 +180,7 @@ defer end immediate
    create  ( "name" -- ad )
       here 0 ,          \ Will hold xt of switch run-time
       0 noop-xt         ( -- ad xt1 xt2 ) \ xt1 is a sentinel
-      0 -1              ( -- ad xt1 xt2 start size )   \ -ve size is invalid
+      [ -1 1 rshift dup invert swap ] 2literal  ( -- ad xt1 xt2 swmax swmin )
       set-depths
       ['] end-switch is end
    does>  ( n -- ? )
