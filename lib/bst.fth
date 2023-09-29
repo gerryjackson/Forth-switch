@@ -4,7 +4,9 @@
 \ node at index i are at indexes 2i and 2i+1 respectively. The bottom level
 \ of the BST is filled up from the left so there is no wasted space in the
 \ BST array.
-
+\
+\ See https://algorithmica.org/en/eytzinger
+\
 \ This version is generic in that the BST is independent of the user arrays
 \ which take care of array item size, access to fields etc. The BST array holds
 \ an index into the user array and the index may be 1 byte if the number of
@@ -21,25 +23,7 @@
 \ program. No provision is made for insertion of additional items or deletion
 \ of items already in the tree.
 
-0 [if]
-
-Recursive iplementation from https://algorithmica.org/en/eytzinger
-
-const int n = 1e5;
-int a[n], b[n+1];
-
-int eytzinger(int i = 0, int k = 1) {
-    if (k <= n) {
-        i = eytzinger(i, 2 * k);
-        b[k] = a[i++];
-        i = eytzinger(i, 2 * k + 1);
-    }
-    return i;
-}
-
-[then]
-
-: version$ s" 1.5.3" ;
+: version$ s" 1.5.4" ;
 cr .( Loading Binary Search Tree version ) version$ type cr
 
 \ CREATE-BST creates and initialises a BST with #items nodes. The user ITEMS
@@ -49,6 +33,8 @@ cr .( Loading Binary Search Tree version ) version$ type cr
 \ Usage:  26 create-bst constant bst-name
 \ The root node is at BST-NAME[1] and BST-NAME[0] holds #items i.e. the size of
 \ the BST array is (#items + 1)
+\
+\ See bst-test.fth for examples of use
 
 : create-bst  ( #items -- bst )
    here swap dup c, allot  ( -- bst )
