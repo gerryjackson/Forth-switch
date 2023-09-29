@@ -120,6 +120,7 @@ Forth-switch has followed MLG in using the word `END` to complete `WHEN`, `OTHER
 ## Further developments
 
 Probably development of two more versions of switch.fth
-* For a sparse set of switch values (with binary search or hashing to search the jump table
+* Generating standalone Forth source code
+* For a sparse set of switch values (with binary search tree and/or hashing to search the jump table
 * For a simple version with single integer switch values
 
