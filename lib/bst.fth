@@ -4,8 +4,12 @@
 \ node at index i are at indexes 2i and 2i+1 respectively. The bottom level
 \ of the BST is filled up from the left so there is no wasted space in the
 \ BST array.
-\
 \ See https://algorithmica.org/en/eytzinger
+
+\ Copyright (C) G W Jackson 2023
+\ This software is covered by the MIT software license, a copy of which should
+\ have accompanied this file. If not see https://opensource.org/licenses/MIT
+
 \
 \ This version is generic in that the BST is independent of the user arrays
 \ which take care of array item size, access to fields etc. The BST array holds
