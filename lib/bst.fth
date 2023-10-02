@@ -5,9 +5,11 @@
 \ It generates a binary search tree (BST) for a sorted array of items.
 \ The BST is an array without pointers to the left and right subtrees.
 \ The root item is at index 1 in the BST array, left and right subtrees of
-\ node at index i are at indexes 2i and 2i+1 respectively. The bottom level
-\ of the BST is filled up from the left so there is no wasted space in the
-\ BST array.
+\ node at index i are at indexes 2i and 2i+1 respectively. An alternative
+\ is to have the root node at index 0 when the left and right subtrees are at
+\ indexes 2i+1 and 2i+2. The bottom level of the BST is filled up from the
+\ left so there is no wasted space in the BST array.
+\
 \ See https://algorithmica.org/en/eytzinger
 \
 \ This version is generic in that the BST is independent of the user arrays
@@ -18,13 +20,12 @@
 \
 \ If an application needs more speed the BST can contain a record at each node
 \ but then the BST search has to take care of record size when moving down the
-\ subtrees e.g. if the record size is 3 cells the root node will be at index 3,
-\ and left and right subtrees at indexes 2*i and 2*i+3
+\ subtrees e.g. if the record size is 3 cells the root node will be at index
+\ 3 cells, and the left and right subtrees of node i at indexes 2*i and
+\ 2*i+(3 cells).
 \
-\ Note that this implementation is for a fixed set of items such as reserved
-\ words in a programming language, or for small associative arrays in a
-\ program. No provision is made for insertion of additional items or deletion
-\ of existing items.
+\ Note that this implementation is for a fixed set of items, no provision is
+\ made for insertion of additional items or deletion of existing items.
 
 : version$ s" 1.5.4" ;
 cr .( Loading Binary Search Tree version ) version$ type cr
@@ -42,8 +43,7 @@ cr .( Loading Binary Search Tree version ) version$ type cr
 : create-bst  ( #items -- bst )
    here swap dup c, allot  ( -- bst )
    1 0 rot                 ( -- bi ii bst ) \ bi is bst index, ii item index
-   [:
-      >r over r@ c@ <=                 ( -- bi ii f )    ( R: -- bst ) 
+   [: >r over r@ c@ <=                 ( -- bi ii f )    ( R: -- bst ) 
       if
          over 2* swap r> recurse >r    ( -- bi 2*bi ii )
          2dup swap r@ + c! 1+          ( -- bi ii+1 )
