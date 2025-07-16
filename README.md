@@ -9,7 +9,7 @@ MLG's implementation is non-standard as it uses return stack manipulation
 extensively and is, therefore, not guaranteed to work on all Forth systems.
 
 This implementation in ANS/Forth 2012 has much the same syntax except that:
-- it is called switch instead of choose
+- it is called create-switch instead of choose
 - this switch is a defining word instead of MLG's choose that is a control structure
 contained in a colon definition and may be nested.
 
@@ -38,7 +38,7 @@ where:
      could be written as `20 ... 10`
    - `<actions-i>` is regular Forth (but not a definition). 
    - the `OTHER` clause is optional, if absent the default action is `NOOP`
-   - `SWITCH` defines a word that, when executed, performs the action associated
+   - `CREATE-SWITCH` defines a word that, when executed, performs the action associated
      with the integer supplied
 
 An example:
@@ -47,7 +47,7 @@ An example:
 create-switch foo
    0            when  ." zero"     end
    2 1 3 ... 10 when  ." 1 to 10"  end
-   -10 ... -1   when  ." -1 to 10" end
+   -10 ... -1   when  ." -1 to -10" end
                 other ." Outside the range -10 to 10"  end
 end
 ```
